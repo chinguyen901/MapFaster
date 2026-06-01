@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1A73E8"/>
+  <!-- Map pin shape -->
+  <ellipse cx="256" cy="380" rx="80" ry="18" fill="rgba(0,0,0,0.2)"/>
+  <path d="M256 100 C193 100 142 151 142 214 C142 290 256 400 256 400 C256 400 370 290 370 214 C370 151 319 100 256 100Z" fill="white"/>
+  <circle cx="256" cy="210" r="52" fill="#1A73E8"/>
+  <!-- Lightning bolt (speed) -->
+  <path d="M266 170 L240 215 L258 215 L248 250 L280 205 L260 205 Z" fill="white"/>
+</svg>
