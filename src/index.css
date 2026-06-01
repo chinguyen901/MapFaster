@@ -1,10 +1,12 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --color-primary: #1A73E8;
   --color-route-best: #00C853;
   --color-route-alt: #9E9E9E;
-  --color-nav-bg: #1A1A2E;
+  --color-nav-bg: #1a1f3a;
   --color-accent: #FF6D00;
 }
 
@@ -22,37 +24,6 @@ html, body, #root {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* Leaflet overrides */
-.leaflet-container {
-  height: 100%;
-  width: 100%;
-  z-index: 0;
-}
-
-.leaflet-control-zoom {
-  display: none;
-}
-
-/* Custom marker */
-.user-location-marker {
-  width: 20px;
-  height: 20px;
-  background: var(--color-primary);
-  border: 3px solid white;
-  border-radius: 50%;
-  box-shadow: 0 2px 8px rgba(26,115,232,0.5);
-}
-
-/* Route popup */
-.route-popup .leaflet-popup-content-wrapper {
-  border-radius: 12px;
-  padding: 0;
-  overflow: hidden;
-}
-
-.route-popup .leaflet-popup-content {
-  margin: 0;
-}
-
-/* Scrollbar ẩn trên mobile */
+.leaflet-container { height: 100%; width: 100%; z-index: 0; }
+.leaflet-control-zoom { display: none; }
 ::-webkit-scrollbar { display: none; }

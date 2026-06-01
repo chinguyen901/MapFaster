@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1A73E8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Map Faster">
+  <title>Map Faster ⚡</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #1A73E8;
+      --nav-bg: #1a1f3a;
+      --green: #00C853;
+      --orange: #FF6D00;
+      --gray: #9E9E9E;
+      --sft: env(safe-area-inset-top, 0px);
+      --sfb: env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      height: 100%; width: 100%; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /* ══════════════════════ LAYOUT ══════════════════════ */
+    #app {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      background: #e9f0e9;
+    }
+
+    /* NAV HEADER — top of app, only during navigation */
+    #nav-header {
+      display: none; flex-direction: column;
+      background: var(--nav-bg);
+      padding-top: var(--sft);
+      z-index: 600; flex-shrink: 0;
+    }
+    #nav-header.show { display: flex; }
+
+    .nh-main {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px 10px;
+    }
+    .nh-icon {
+      width: 54px; height: 54px; flex-shrink: 0;
+      background: var(--primary); border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .nh-icon svg { width: 34px; height: 34px; }
+    .nh-text { flex: 1; min-width: 0; }
+    .nh-dist {
+      font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.55);
+      text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 2px;
+    }
+    .nh-street {
+      font-size: 19px; font-weight: 700; color: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #btn-stop-nav {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(255,255,255,0.13); border: none; color: #fff;
+      font-size: 17px; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .nh-next {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 14px;
+      background: rgba(0,0,0,0.22);
+      border-top: 1px solid rgba(255,255,255,0.07);
+    }
+    .nh-next-label { font-size: 11px; color: rgba(255,255,255,0.45); white-space: nowrap; }
+    .nh-next-icon { font-size: 15px; }
+    .nh-next-street { font-size: 13px; color: rgba(255,255,255,0.78); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nh-progress { height: 3px; background: rgba(255,255,255,0.08); }
+    .nh-progress-fill { height: 100%; background: var(--green); transition: width .3s; width: 0; }
+
+    /* MAP WRAPPER — fills remaining space */
+    #map-wrapper { flex: 1; position: relative; overflow: hidden; }
+    #map { width: 100%; height: 100%; }
+    .leaflet-container { background: #dde8dd; }
+    .leaflet-control-zoom { display: none !important; }
+    .leaflet-control-attribution { font-size: 9px !important; }
+
+    /* SEARCH BAR — floating inside map area */
+    #search-bar {
+      position: absolute;
+      top: calc(10px + var(--sft)); left: 10px; right: 10px;
+      z-index: 500;
+    }
+    #search-bar.hide { display: none; }
+
+    .sb-box {
+      display: flex; align-items: center; gap: 10px;
+      background: #fff; border-radius: 16px;
+      padding: 0 14px; height: 52px;
+      box-shadow: 0 2px 18px rgba(0,0,0,0.18);
+    }
+    .sb-icon { font-size: 18px; flex-shrink: 0; }
+    #search-input {
+      flex: 1; border: none; outline: none;
+      font-size: 15px; color: #212121; background: transparent; min-width: 0;
+    }
+    #search-input::placeholder { color: #aaa; }
+    #btn-clear {
+      display: none; background: none; border: none;
+      font-size: 18px; color: #bbb; cursor: pointer; padding: 4px; flex-shrink: 0;
+    }
+
+    /* AUTOCOMPLETE */
+    #ac-list {
+      margin-top: 6px; background: #fff; border-radius: 16px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.14);
+      overflow: hidden; max-height: 280px; overflow-y: auto;
+      display: none;
+    }
+    .ac-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 12px 16px; cursor: pointer;
+      border-bottom: 1px solid #f2f2f2; transition: background .1s;
+    }
+    .ac-item:last-child { border-bottom: none; }
+    .ac-item:active { background: #eef5ff; }
+    .ac-pin { font-size: 16px; margin-top: 1px; flex-shrink: 0; }
+    .ac-name { font-size: 14px; font-weight: 600; color: #212121; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ac-addr { font-size: 12px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* SPEED DISPLAY — floating left during navigation */
+    #speed-box {
+      display: none; position: absolute;
+      left: 12px; top: 50%; transform: translateY(-50%);
+      z-index: 400;
+    }
+    #speed-box.show { display: block; }
+    .spd-circle {
+      width: 68px; height: 68px; background: #fff; border-radius: 50%;
+      border: 3px solid #e0e0e0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.14);
+    }
+    .spd-val { font-size: 24px; font-weight: 800; color: #212121; line-height: 1; }
+    .spd-unit { font-size: 9px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+
+    /* RECENTER BUTTON */
+    #btn-recenter {
+      position: absolute; right: 12px; bottom: 236px; z-index: 400;
+      width: 46px; height: 46px; background: #fff; border-radius: 50%; border: none;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.18); cursor: pointer;
+      font-size: 20px; display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    #btn-recenter:active { background: #f0f0f0; }
+    #btn-recenter.nav-mode { bottom: 110px; }
+
+    /* TOAST */
+    #toast {
+      position: absolute; top: 78px; left: 14px; right: 14px; z-index: 700;
+      background: #323232; color: #fff; padding: 11px 16px;
+      border-radius: 12px; font-size: 13px; text-align: center;
+      display: none; animation: fadeUp .2s;
+    }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+    /* ══════════════════════ BOTTOM SHEET ══════════════════════ */
+    #bottom-sheet {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 450;
+      background: #fff; border-radius: 22px 22px 0 0;
+      box-shadow: 0 -4px 24px rgba(0,0,0,0.13);
+      display: none; flex-direction: column;
+      max-height: 80%;
+      padding-bottom: var(--sfb);
+    }
+    #bottom-sheet.show { display: flex; }
+
+    .bs-handle {
+      display: flex; justify-content: center;
+      padding: 10px 0 6px; cursor: pointer; flex-shrink: 0;
+    }
+    .bs-bar { width: 38px; height: 4px; background: #ddd; border-radius: 2px; }
+    .bs-body { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
+
+    /* Destination label in sheet */
+    .bs-dest {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0 12px; border-bottom: 1px solid #f0f0f0; margin-bottom: 12px;
+    }
+    .bs-dest-pin { font-size: 20px; color: var(--orange); }
+    .bs-dest-lbl { font-size: 11px; color: #aaa; }
+    .bs-dest-name { font-size: 14px; font-weight: 700; color: #212121; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Route cards */
+    .rc {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px; border: 2px solid #ececec; border-radius: 14px;
+      margin-bottom: 8px; cursor: pointer; transition: all .15s; background: #fff;
+    }
+    .rc.sel { border-color: var(--primary); background: #eef4ff; }
+    .rc-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .rc-dot.best { background: var(--green); }
+    .rc-dot.alt { background: var(--gray); }
+    .rc-info { flex: 1; min-width: 0; }
+    .rc-time { font-size: 16px; font-weight: 700; color: #212121; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .rc-badge { font-size: 10px; font-weight: 700; background: var(--orange); color: #fff; padding: 2px 8px; border-radius: 10px; }
+    .rc-label { font-size: 11px; color: #888; font-weight: 600; margin-left: auto; flex-shrink: 0; }
+    .rc-dist { font-size: 12px; color: #aaa; margin-top: 2px; }
+    .rc-check { font-size: 20px; color: var(--primary); flex-shrink: 0; }
+
+    /* Loading spinner */
+    .spinner { width: 22px; height: 22px; border: 3px solid #e5e5e5; border-top-color: var(--primary); border-radius: 50%; animation: spin .65s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Summary stats */
+    .bs-stats {
+      display: flex; justify-content: center; gap: 20px;
+      font-size: 12px; color: #888; margin: 4px 0 10px;
+    }
+
+    /* Start button */
+    .btn-start {
+      width: 100%; height: 54px; background: var(--primary);
+      color: #fff; border: none; border-radius: 16px;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      letter-spacing: .3px; transition: background .1s;
+    }
+    .btn-start:active { background: #1557B0; }
+
+    /* ══════════════════════ NAV BOTTOM BAR ══════════════════════ */
+    #nav-bar {
+      display: none; background: #fff; flex-shrink: 0;
+      padding: 10px 16px calc(10px + var(--sfb));
+      box-shadow: 0 -2px 14px rgba(0,0,0,0.09); z-index: 450;
+    }
+    #nav-bar.show { display: block; }
+
+    .nb-row { display: flex; align-items: center; gap: 12px; }
+    .nb-exit {
+      width: 46px; height: 46px; border: 2px solid #ddd; border-radius: 12px;
+      background: #fff; font-size: 18px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .nb-stats { flex: 1; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .nb-val { font-size: 15px; font-weight: 700; color: #212121; }
+    .nb-sep { color: #ccc; font-size: 14px; }
+    .nb-eta { font-size: 12px; color: #888; margin-top: 4px; }
+    .nb-more {
+      width: 38px; height: 38px; background: #f5f5f5; border: none;
+      border-radius: 10px; cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ══════════════════════ LOADING SPLASH ══════════════════════ */
+    #splash {
+      position: fixed; inset: 0; z-index: 999;
+      background: #fff; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+    }
+    .splash-logo {
+      width: 88px; height: 88px; background: var(--primary);
+      border-radius: 24px; display: flex; align-items: center; justify-content: center;
+      font-size: 50px; box-shadow: 0 6px 24px rgba(26,115,232,0.35);
+    }
+    .splash-name { font-size: 26px; font-weight: 800; color: #212121; }
+    .splash-sub { font-size: 14px; color: #888; }
+    .spinner-lg { width: 36px; height: 36px; border: 3px solid #e5e5e5; border-top-color: var(--primary); border-radius: 50%; animation: spin .65s linear infinite; margin-top: 6px; }
+  </style>
+</head>
+<body>
+
+<!-- Splash screen -->
+<div id="splash">
+  <div class="splash-logo">⚡</div>
+  <div class="splash-name">Map Faster</div>
+  <div class="splash-sub">Tìm đường nhanh nhất cho shipper</div>
+  <div class="spinner-lg"></div>
+</div>
+
+<div id="app">
+
+  <!-- ① NAVIGATION HEADER (top, only when navigating) -->
+  <div id="nav-header">
+    <div class="nh-main">
+      <div class="nh-icon" id="nh-icon"><!-- SVG injected --></div>
+      <div class="nh-text">
+        <div class="nh-dist" id="nh-dist">0 m</div>
+        <div class="nh-street" id="nh-street">Đang dẫn đường...</div>
+      </div>
+      <button id="btn-stop-nav" title="Dừng dẫn đường">✕</button>
+    </div>
+    <div class="nh-next">
+      <span class="nh-next-label">Sau đó:</span>
+      <span class="nh-next-icon" id="nh-next-icon">⬆️</span>
+      <span class="nh-next-street" id="nh-next-street">—</span>
+    </div>
+    <div class="nh-progress"><div class="nh-progress-fill" id="nh-progress"></div></div>
+  </div>
+
+  <!-- ② MAP WRAPPER -->
+  <div id="map-wrapper">
+    <div id="map"></div>
+
+    <!-- Search bar (hidden during navigation) -->
+    <div id="search-bar">
+      <div class="sb-box">
+        <span class="sb-icon">🔍</span>
+        <input type="search" id="search-input" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Nhập địa chỉ giao hàng...">
+        <button id="btn-clear">✕</button>
+      </div>
+      <div id="ac-list"></div>
+    </div>
+
+    <!-- Speed display (navigation mode) -->
+    <div id="speed-box">
+      <div class="spd-circle">
+        <div class="spd-val" id="spd-val">0</div>
+        <div class="spd-unit">km/h</div>
+      </div>
+    </div>
+
+    <!-- Recenter button -->
+    <button id="btn-recenter" title="Về vị trí của tôi">📍</button>
+
+    <!-- Toast notifications -->
+    <div id="toast"></div>
+
+    <!-- Bottom sheet (route selection) -->
+    <div id="bottom-sheet">
+      <div class="bs-handle" id="bs-handle"><div class="bs-bar"></div></div>
+      <div class="bs-body" id="bs-body"><!-- filled by JS --></div>
+    </div>
+  </div>
+
+  <!-- ③ NAV BOTTOM BAR (only when navigating) -->
+  <div id="nav-bar">
+    <div class="nb-row">
+      <button class="nb-exit" id="btn-exit-nav">✕</button>
+      <div class="nb-stats">
+        <span class="nb-val" id="nb-dist">—</span>
+        <span class="nb-sep">·</span>
+        <span class="nb-val" id="nb-time">—</span>
+        <span class="nb-sep">·</span>
+        <span style="font-size:14px">🚦</span>
+        <span class="nb-val" id="nb-lights">—</span>
+      </div>
+      <button class="nb-more" id="nb-more">∧</button>
+    </div>
+    <div class="nb-eta" id="nb-eta">—</div>
+  </div>
+
+</div><!-- #app -->
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════════
+const OSRM  = 'https://router.project-osrm.org';
+const NOM   = 'https://nominatim.openstreetmap.org';
+const UA    = 'MapFaster/1.0 (chinguyen10022000@gmail.com)';
+
+// ══════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════
+const S = {
+  mode: 'idle',   // idle | routes | navigating
+  origin: null,
+  dest: null,
+  routes: [],
+  selIdx: 0,
+  stepIdx: 0,
+  speed: 0,
+  firstFix: false,
+  // Leaflet
+  map: null,
+  userMk: null,
+  destMk: null,
+  lines: [],
+  // Timers
+  searchT: null,
+  toastT: null,
+};
+
+// ══════════════════════════════════════════════════════════
+// TURN DIRECTION ICONS
+// ══════════════════════════════════════════════════════════
+function turnSVG(modifier, type) {
+  const S = 'stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none"';
+  if (type === 'arrive')
+    return `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="9" fill="white"/><circle cx="16" cy="16" r="5" fill="#1A73E8"/></svg>`;
+  if (type === 'depart' || !modifier)
+    return `<svg viewBox="0 0 32 32"><path d="M16 27 L16 7 M16 7 L10 13 M16 7 L22 13" ${S}/></svg>`;
+  if (type === 'roundabout' || type === 'rotary')
+    return `<svg viewBox="0 0 32 32"><path d="M16 5 A11 11 0 1 1 5 16" ${S}/><path d="M5 16 L1 11 M5 16 L10 11" ${S}/></svg>`;
+  switch (modifier) {
+    case 'left':       return `<svg viewBox="0 0 32 32"><path d="M22 27 L22 17 Q22 9 14 9 L9 9 M9 9 L14 4 M9 9 L14 14" ${S}/></svg>`;
+    case 'slight left':return `<svg viewBox="0 0 32 32"><path d="M20 27 L20 20 Q17 9 9 7 M9 7 L15 5 M9 7 L11 13" ${S}/></svg>`;
+    case 'sharp left': return `<svg viewBox="0 0 32 32"><path d="M24 27 L24 17 Q24 7 13 7 L10 7 M10 7 L6 11 M10 7 L14 12" ${S}/></svg>`;
+    case 'right':      return `<svg viewBox="0 0 32 32"><path d="M10 27 L10 17 Q10 9 18 9 L23 9 M23 9 L18 4 M23 9 L18 14" ${S}/></svg>`;
+    case 'slight right':return `<svg viewBox="0 0 32 32"><path d="M12 27 L12 20 Q15 9 23 7 M23 7 L17 5 M23 7 L21 13" ${S}/></svg>`;
+    case 'sharp right':return `<svg viewBox="0 0 32 32"><path d="M8 27 L8 17 Q8 7 19 7 L22 7 M22 7 L26 11 M22 7 L18 12" ${S}/></svg>`;
+    case 'uturn':      return `<svg viewBox="0 0 32 32"><path d="M10 27 L10 15 Q10 5 19 5 A7 7 0 0 1 26 12 L26 19 M26 19 L21 15 M26 19 L30 15" ${S}/></svg>`;
+    default:           return `<svg viewBox="0 0 32 32"><path d="M16 27 L16 7 M16 7 L10 13 M16 7 L22 13" ${S}/></svg>`;
+  }
+}
+
+function turnEmoji(modifier, type) {
+  if (type === 'arrive')  return '🏁';
+  if (type === 'depart')  return '🚀';
+  if (type === 'roundabout' || type === 'rotary') return '🔄';
+  switch (modifier) {
+    case 'left': return '⬅️'; case 'slight left': return '↖️'; case 'sharp left': return '↩️';
+    case 'right': return '➡️'; case 'slight right': return '↗️'; case 'sharp right': return '↪️';
+    case 'uturn': return '🔃';
+    default: return '⬆️';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// FORMATTERS
+// ══════════════════════════════════════════════════════════
+function fDist(m) { return m < 1000 ? `${Math.round(m)} m` : `${(m/1000).toFixed(1)} km`; }
+
+function fTime(s) {
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} phút`;
+  const h = Math.floor(m/60), r = m%60;
+  return r ? `${h} giờ ${r} phút` : `${h} giờ`;
+}
+
+function fETA(s) {
+  const d = new Date(Date.now() + s * 1000);
+  return `Dự kiến ${pad2(d.getHours())}:${pad2(d.getMinutes())} đến`;
+}
+
+function pad2(n) { return n.toString().padStart(2, '0'); }
+
+function countTurns(route) {
+  let n = 0;
+  (route.legs || []).forEach(leg =>
+    (leg.steps || []).forEach(st => {
+      const t = st.maneuver?.type;
+      if (t && t !== 'depart' && t !== 'arrive') n++;
+    })
+  );
+  return n;
+}
+
+function haverDist(la1, lo1, la2, lo2) {
+  const R = 6371000, r = Math.PI/180;
+  const dLa = (la2-la1)*r, dLo = (lo2-lo1)*r;
+  const a = Math.sin(dLa/2)**2 + Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLo/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════════
+function toast(msg, ms = 3500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.style.display = 'block';
+  clearTimeout(S.toastT);
+  S.toastT = setTimeout(() => { el.style.display = 'none'; }, ms);
+}
+
+// ══════════════════════════════════════════════════════════
+// MAP
+// ══════════════════════════════════════════════════════════
+function initMap() {
+  S.map = L.map('map', {
+    center: [10.7769, 106.7009], zoom: 14,
+    zoomControl: false, attributionControl: false,
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(S.map);
+  L.control.attribution({ position: 'bottomleft', prefix: '© OSM' }).addTo(S.map);
+}
+
+// ══════════════════════════════════════════════════════════
+// GPS
+// ══════════════════════════════════════════════════════════
+function startGPS() {
+  if (!navigator.geolocation) { hideSplash(); toast('Trình duyệt không hỗ trợ GPS'); return; }
+  navigator.geolocation.watchPosition(onPos, onPosErr,
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 3000 });
+}
+
+function onPos(p) {
+  const { latitude: la, longitude: lo, speed: spd } = p.coords;
+  S.origin = { lat: la, lng: lo };
+  S.speed = spd != null ? Math.round(spd * 3.6) : 0;
+  document.getElementById('spd-val').textContent = S.speed;
+  updateUserMarker(la, lo);
+  if (!S.firstFix) { S.firstFix = true; S.map.setView([la, lo], 16); hideSplash(); }
+  if (S.mode === 'navigating') advanceStep();
+}
+
+function onPosErr(e) {
+  hideSplash();
+  const m = { 1:'Bạn đã từ chối quyền GPS.', 2:'Không xác định được vị trí.', 3:'GPS quá chậm.' };
+  toast(m[e.code] || 'Lỗi GPS', 6000);
+}
+
+function hideSplash() {
+  document.getElementById('splash').style.display = 'none';
+}
+
+function updateUserMarker(la, lo) {
+  if (!S.userMk) {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="position:relative;width:22px;height:22px;">
+        <div style="position:absolute;inset:0;background:rgba(26,115,232,0.25);border-radius:50%;animation:pulse 2.2s ease-out infinite;"></div>
+        <div style="position:absolute;inset:4px;background:#1A73E8;border:2.5px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(26,115,232,0.55);"></div>
+      </div>
+      <style>@keyframes pulse{0%,100%{transform:scale(1);opacity:.7}60%{transform:scale(2.8);opacity:0;}}</style>`,
+      iconSize: [22, 22], iconAnchor: [11, 11],
+    });
+    S.userMk = L.marker([la, lo], { icon, zIndexOffset: 1000 }).addTo(S.map);
+  } else {
+    S.userMk.setLatLng([la, lo]);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// SEARCH / GEOCODING
+// ══════════════════════════════════════════════════════════
+const inp  = document.getElementById('search-input');
+const acL  = document.getElementById('ac-list');
+const btnC = document.getElementById('btn-clear');
+
+inp.addEventListener('input', () => {
+  const q = inp.value.trim();
+  btnC.style.display = q ? 'flex' : 'none';
+  clearTimeout(S.searchT);
+  if (q.length < 2) { acL.style.display = 'none'; return; }
+  S.searchT = setTimeout(() => geocode(q), 400);
+});
+
+btnC.addEventListener('click', () => {
+  inp.value = ''; btnC.style.display = 'none';
+  acL.style.display = 'none';
+  if (S.mode !== 'navigating') clearDest();
+});
+
+async function geocode(q) {
+  acL.style.display = 'block';
+  acL.innerHTML = `<div class="ac-item"><div class="spinner" style="width:16px;height:16px;flex-shrink:0;"></div><div><div class="ac-name" style="color:#aaa">Đang tìm...</div></div></div>`;
+  try {
+    const ps = new URLSearchParams({ q, countrycodes:'vn', format:'json', limit:'7', addressdetails:'1', namedetails:'1' });
+    if (S.origin) {
+      const d = 0.15;
+      ps.set('viewbox',`${S.origin.lng-d},${S.origin.lat+d},${S.origin.lng+d},${S.origin.lat-d}`);
+      ps.set('bounded','0');
+    }
+    const r = await fetch(`${NOM}/search?${ps}`, { headers:{ 'User-Agent':UA, 'Accept-Language':'vi,en' } });
+    const data = await r.json();
+    if (!data.length) {
+      acL.innerHTML = `<div class="ac-item"><span class="ac-pin">🔍</span><div><div class="ac-name" style="color:#aaa">Không tìm thấy địa chỉ</div></div></div>`;
+      return;
+    }
+    acL.innerHTML = data.map(it => {
+      const name = (it.namedetails?.name || it.display_name.split(',')[0]).trim();
+      return `<div class="ac-item" data-la="${it.lat}" data-lo="${it.lon}" data-name="${esc(name)}" data-addr="${esc(it.display_name)}">
+        <span class="ac-pin">📌</span>
+        <div style="flex:1;min-width:0">
+          <div class="ac-name">${esc(name)}</div>
+          <div class="ac-addr">${esc(it.display_name)}</div>
+        </div>
+      </div>`;
+    }).join('');
+    acL.querySelectorAll('.ac-item').forEach(el => el.addEventListener('click', () => {
+      pickDest({ lat: +el.dataset.la, lng: +el.dataset.lo, name: el.dataset.name, addr: el.dataset.addr });
+    }));
+  } catch {
+    acL.style.display = 'none';
+    toast('Không thể tìm địa chỉ. Kiểm tra mạng.');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// ROUTING
+// ══════════════════════════════════════════════════════════
+async function pickDest(dest) {
+  S.dest = dest;
+  inp.value = dest.name;
+  acL.style.display = 'none';
+  inp.blur();
+  setDestMarker(dest.lat, dest.lng);
+  await calcRoutes();
+}
+
+function setDestMarker(la, lo) {
+  if (S.destMk) { S.destMk.remove(); S.destMk = null; }
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="position:relative;width:34px;height:44px;">
+      <div style="width:30px;height:30px;background:#FF6D00;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 12px rgba(255,109,0,0.5);"></div>
+    </div>`,
+    iconSize: [34, 44], iconAnchor: [17, 44],
+  });
+  S.destMk = L.marker([la, lo], { icon }).addTo(S.map);
+}
+
+async function calcRoutes() {
+  if (!S.origin) { toast('Chưa có GPS, đợi chút...'); return; }
+  showSheetLoading();
+  S.lines.forEach(l => l.remove()); S.lines = [];
+  try {
+    const { lat:la1, lng:lo1 } = S.origin;
+    const { lat:la2, lng:lo2 } = S.dest;
+    const url = `${OSRM}/route/v1/driving/${lo1},${la1};${lo2},${la2}?alternatives=3&steps=true&geometries=geojson&overview=full`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.code !== 'Ok' || !d.routes?.length) throw new Error(d.message || 'Không tìm được đường');
+    S.routes = rankRoutes(d.routes);
+    S.selIdx = 0;
+    drawRoutes();
+    showRouteSheet();
+    S.mode = 'routes';
+  } catch(e) {
+    hideSheet();
+    S.mode = 'idle';
+    toast('Lỗi tìm đường: ' + e.message);
+  }
+}
+
+function rankRoutes(arr) {
+  const minDur  = Math.min(...arr.map(r => r.duration));
+  const minDist = Math.min(...arr.map(r => r.distance));
+  return arr.map((r, i) => ({
+    ...r,
+    _score: (r.duration/minDur)*.7 + (r.distance/minDist)*.3,
+    _lbl: r.duration===minDur ? 'Nhanh nhất' : r.distance===minDist ? 'Ngắn nhất' : `Tuyến ${i+1}`,
+  })).sort((a,b) => a._score - b._score);
+}
+
+// ══════════════════════════════════════════════════════════
+// MAP DRAWING
+// ══════════════════════════════════════════════════════════
+function drawRoutes() {
+  S.lines.forEach(l => l.remove()); S.lines = [];
+  // Draw in reverse so best route is on top
+  [...S.routes].reverse().forEach((route, ri) => {
+    const i = S.routes.length - 1 - ri;
+    const isBest = i === 0;
+    const isSel  = i === S.selIdx;
+    const pts = route.geometry.coordinates.map(([lo,la]) => [la, lo]);
+    const line = L.polyline(pts, {
+      color:   isBest ? '#00C853' : (isSel ? '#4a4a4a' : '#9E9E9E'),
+      weight:  isSel ? 9 : 5,
+      opacity: isSel ? 0.95 : 0.48,
+      lineCap: 'round', lineJoin: 'round',
+    }).addTo(S.map);
+    line.on('click', () => pickRoute(i));
+    S.lines.unshift(line);
+  });
+  const all = S.routes[0].geometry.coordinates.map(([lo,la]) => [la,lo]);
+  S.map.fitBounds(L.latLngBounds(all), { padding: [80, 22] });
+}
+
+function pickRoute(i) {
+  S.selIdx = i;
+  drawRoutes();
+  showRouteSheet();
+}
+// Expose globally for onclick in innerHTML
+window.pickRoute = pickRoute;
+
+// ══════════════════════════════════════════════════════════
+// BOTTOM SHEET
+// ══════════════════════════════════════════════════════════
+function showSheetLoading() {
+  const bs = document.getElementById('bottom-sheet');
+  bs.classList.add('show');
+  document.getElementById('bs-body').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:24px">
+      <div class="spinner"></div>
+      <span style="color:#888;font-size:14px">Đang tính đường đi...</span>
+    </div>`;
+  recenterBtnPos(false);
+}
+
+function hideSheet() {
+  document.getElementById('bottom-sheet').classList.remove('show');
+  recenterBtnPos(false);
+}
+
+function showRouteSheet() {
+  const bs = document.getElementById('bottom-sheet');
+  bs.classList.add('show');
+  recenterBtnPos(true);
+
+  const dest = `<div class="bs-dest">
+    <span class="bs-dest-pin">📌</span>
+    <div style="flex:1;min-width:0">
+      <div class="bs-dest-lbl">Điểm đến</div>
+      <div class="bs-dest-name">${esc(S.dest.name)}</div>
+    </div>
+  </div>`;
+
+  const cards = S.routes.map((r, i) => `
+    <div class="rc${i===S.selIdx?' sel':''}" onclick="pickRoute(${i})">
+      <div class="rc-dot${i===0?' best':' alt'}"></div>
+      <div class="rc-info">
+        <div class="rc-time">
+          ${esc(fTime(r.duration))}
+          ${i===0?'<span class="rc-badge">ĐỀ XUẤT</span>':''}
+          <span class="rc-label">${esc(r._lbl)}</span>
+        </div>
+        <div class="rc-dist">${esc(fDist(r.distance))}</div>
+      </div>
+      ${i===S.selIdx?'<span class="rc-check">✓</span>':''}
+    </div>`).join('');
+
+  const sel = S.routes[S.selIdx];
+  const stats = `<div class="bs-stats">
+    <span>🛣️ ${esc(fDist(sel.distance))}</span>
+    <span>⏱️ ${esc(fTime(sel.duration))}</span>
+    <span>↩️ ${countTurns(sel)} ngã rẽ</span>
+  </div>`;
+
+  document.getElementById('bs-body').innerHTML =
+    dest + cards + stats +
+    `<button class="btn-start" onclick="startNav()">🚀&nbsp; BẮT ĐẦU DẪN ĐƯỜNG</button>`;
+}
+window.startNav = startNav;
+
+function recenterBtnPos(sheetOpen) {
+  document.getElementById('btn-recenter').style.bottom = sheetOpen ? '240px' : '24px';
+}
+
+// ══════════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════════
+function startNav() {
+  S.mode = 'navigating'; S.stepIdx = 0;
+  // Show nav UI
+  document.getElementById('search-bar').classList.add('hide');
+  document.getElementById('bottom-sheet').classList.remove('show');
+  document.getElementById('nav-header').classList.add('show');
+  document.getElementById('speed-box').classList.add('show');
+  document.getElementById('nav-bar').classList.add('show');
+  document.getElementById('btn-recenter').classList.add('nav-mode');
+  updateNavUI();
+  // Tighten map around current position
+  if (S.origin) S.map.setView([S.origin.lat, S.origin.lng], 17);
+}
+
+function stopNav() {
+  // Return to route selection
+  document.getElementById('nav-header').classList.remove('show');
+  document.getElementById('speed-box').classList.remove('show');
+  document.getElementById('nav-bar').classList.remove('show');
+  document.getElementById('btn-recenter').classList.remove('nav-mode');
+  document.getElementById('search-bar').classList.remove('hide');
+  S.mode = 'routes';
+  showRouteSheet();
+}
+
+function exitNav() {
+  document.getElementById('nav-header').classList.remove('show');
+  document.getElementById('speed-box').classList.remove('show');
+  document.getElementById('nav-bar').classList.remove('show');
+  document.getElementById('btn-recenter').classList.remove('nav-mode');
+  document.getElementById('search-bar').classList.remove('hide');
+  clearDest();
+  S.mode = 'idle';
+}
+
+function clearDest() {
+  S.dest = null; S.routes = []; S.selIdx = 0; S.stepIdx = 0;
+  if (S.destMk) { S.destMk.remove(); S.destMk = null; }
+  S.lines.forEach(l => l.remove()); S.lines = [];
+  hideSheet();
+}
+
+function advanceStep() {
+  if (!S.origin || !S.routes.length) return;
+  const steps = S.routes[S.selIdx]?.legs?.[0]?.steps ?? [];
+  if (S.stepIdx >= steps.length - 1) return;
+  const step = steps[S.stepIdx];
+  const coords = step.geometry?.coordinates;
+  if (!coords?.length) return;
+  const [elo, ela] = coords[coords.length - 1];
+  if (haverDist(S.origin.lat, S.origin.lng, ela, elo) < 25) {
+    S.stepIdx++;
+    updateNavUI();
+  }
+}
+
+function updateNavUI() {
+  const route = S.routes[S.selIdx];
+  const steps = route?.legs?.[0]?.steps ?? [];
+  const step  = steps[S.stepIdx] ?? steps[steps.length - 1];
+  const nxt   = steps[S.stepIdx + 1];
+  if (!step) return;
+
+  const m  = step.maneuver ?? {};
+  const nm = nxt?.maneuver ?? {};
+
+  document.getElementById('nh-icon').innerHTML    = turnSVG(m.modifier, m.type);
+  document.getElementById('nh-dist').textContent  = fDist(step.distance);
+  document.getElementById('nh-street').textContent = step.name || 'Tiếp tục đi thẳng';
+  document.getElementById('nh-next-icon').textContent   = turnEmoji(nm.modifier, nm.type || (nxt ? 'turn' : 'arrive'));
+  document.getElementById('nh-next-street').textContent = nxt ? (nxt.name || 'tiếp tục') : 'Đến nơi';
+
+  const pct = steps.length > 1 ? (S.stepIdx / (steps.length - 1)) * 100 : 100;
+  document.getElementById('nh-progress').style.width = pct + '%';
+
+  document.getElementById('nb-dist').textContent   = fDist(route.distance);
+  document.getElementById('nb-time').textContent   = fTime(route.duration);
+  document.getElementById('nb-lights').textContent = countTurns(route);
+  document.getElementById('nb-eta').textContent    = fETA(route.duration);
+}
+
+// Bottom sheet drag (expand/collapse)
+(function setupDrag() {
+  const bs = document.getElementById('bottom-sheet');
+  const handle = document.getElementById('bs-handle');
+  let startY = 0, startH = 0, dragging = false;
+  const MIN = 110, MAX = Math.round(window.innerHeight * 0.78);
+
+  handle.addEventListener('pointerdown', e => {
+    dragging = true; startY = e.clientY; startH = bs.offsetHeight;
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const h = Math.min(MAX, Math.max(MIN, startH + (startY - e.clientY)));
+    bs.style.height = h + 'px';
+  });
+  handle.addEventListener('pointerup', e => {
+    dragging = false;
+    const h = bs.offsetHeight;
+    bs.style.height = (h > (MIN + MAX) / 2 ? MAX : MIN) + 'px';
+  });
+  handle.addEventListener('click', () => {
+    const cur = bs.offsetHeight;
+    bs.style.height = (cur < (MIN + MAX) / 2 ? MAX : MIN) + 'px';
+  });
+})();
+
+// ══════════════════════════════════════════════════════════
+// EVENT LISTENERS
+// ══════════════════════════════════════════════════════════
+document.getElementById('btn-recenter').addEventListener('click', () => {
+  if (S.origin) S.map.setView([S.origin.lat, S.origin.lng], S.mode === 'navigating' ? 17 : 16);
+  else toast('Chưa có GPS');
+});
+
+document.getElementById('btn-stop-nav').addEventListener('click', stopNav);
+document.getElementById('btn-exit-nav').addEventListener('click', exitNav);
+document.getElementById('nb-more').addEventListener('click', () => {
+  // Toggle show route sheet while navigating
+  const bs = document.getElementById('bottom-sheet');
+  if (bs.classList.contains('show')) { bs.classList.remove('show'); }
+  else { showRouteSheet(); }
+});
+
+inp.addEventListener('focus', () => setTimeout(() => window.scrollTo(0,0), 100));
+
+// ══════════════════════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════════════════════
+initMap();
+startGPS();
+setTimeout(() => {
+  if (!S.firstFix) {
+    hideSplash();
+    toast('Không lấy được GPS. Kiểm tra quyền truy cập vị trí.', 6000);
+  }
+}, 9000);
+</script>
+</body>
+</html>
